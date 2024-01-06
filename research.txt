@@ -34,3 +34,4 @@ Data:
 
 https://www.sec.gov/edgar
 https://www.eia.gov/opendata/
+https://arxiv.org/
