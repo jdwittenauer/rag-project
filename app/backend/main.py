@@ -1,32 +1,57 @@
-from typing import List
+from dotenv import load_dotenv
 
+load_dotenv()
+
+import os
+import logging
+import uvicorn
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from llama_index.chat_engine.types import BaseChatEngine
-
-from app.engine.index import get_chat_engine
-from fastapi import APIRouter, Depends, HTTPException, Request, status
 from llama_index.llms.base import ChatMessage
 from llama_index.llms.types import MessageRole
-from pydantic import BaseModel
 
-chat_router = r = APIRouter()
-
-
-class _Message(BaseModel):
-    role: MessageRole
-    content: str
+from src.message import ChatData
+from src.engine import get_chat_engine
 
 
-class _ChatData(BaseModel):
-    messages: List[_Message]
+chat_engine = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global chat_engine
+    chat_engine = get_chat_engine()
+    yield
 
 
-@r.post("")
-async def chat(
-    request: Request,
-    data: _ChatData,
-    chat_engine: BaseChatEngine = Depends(get_chat_engine),
-):
+app = FastAPI(lifespan=lifespan)
+
+environment = os.getenv("ENVIRONMENT")
+
+if environment == "dev":
+    logger = logging.getLogger("uvicorn")
+    logger.warning("Running in development mode - allowing CORS for all origins")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Welcome to the RAG project app!"
+    }
+
+
+@app.post("/api/chat")
+async def chat(request: Request, data: ChatData):
+    global chat_engine
+
     # check preconditions and get last message
     if len(data.messages) == 0:
         raise HTTPException(
@@ -60,3 +85,7 @@ async def chat(
             yield token
 
     return StreamingResponse(event_generator(), media_type="text/plain")
+
+
+if __name__ == "__main__":
+    uvicorn.run(app="main:app", host="0.0.0.0", reload=True)
