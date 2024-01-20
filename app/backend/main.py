@@ -1,22 +1,19 @@
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import os
-import logging
 import uvicorn
+from dotenv import load_dotenv
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from llama_index.llms.base import ChatMessage
-from llama_index.llms.types import MessageRole
 
-from src.message import ChatData
+from src.message import ChatData, get_last_message, get_chat_history
 from src.engine import get_chat_engine
 
 
 chat_engine = None
+
+load_dotenv()
+environment = os.getenv("ENVIRONMENT")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,18 +24,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-environment = os.getenv("ENVIRONMENT")
-
-if environment == "dev":
-    logger = logging.getLogger("uvicorn")
-    logger.warning("Running in development mode - allowing CORS for all origins")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
@@ -53,28 +45,13 @@ async def chat(request: Request, data: ChatData):
     global chat_engine
 
     # check preconditions and get last message
-    if len(data.messages) == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No messages provided",
-        )
-    lastMessage = data.messages.pop()
-    if lastMessage.role != MessageRole.USER:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Last message must be from user",
-        )
+    last_message = get_last_message(data)
+
     # convert messages coming from the request to type ChatMessage
-    messages = [
-        ChatMessage(
-            role=m.role,
-            content=m.content,
-        )
-        for m in data.messages
-    ]
+    chat_history = get_chat_history(data)
 
     # query chat engine
-    response = chat_engine.stream_chat(lastMessage.content, messages)
+    response = chat_engine.stream_chat(last_message.content, chat_history)
 
     # stream response
     async def event_generator():
