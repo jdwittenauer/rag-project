@@ -1,6 +1,6 @@
 from typing import List
-from llama_index.llms.types import MessageRole
-from llama_index.llms.base import ChatMessage
+from llama_index.core.llms import MessageRole
+from llama_index.core.llms import ChatMessage
 from pydantic import BaseModel
 from fastapi import HTTPException, status
 
